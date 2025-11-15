@@ -1,0 +1,188 @@
+using UnityEngine;
+using System.Threading.Tasks;
+using UnityEngine.UI;
+
+public class TesteAPI : MonoBehaviour
+{
+    public static TesteAPI Instance;
+
+    [Header("UI References")]
+    public GameObject pauseMenu;
+    public Text vidaText;
+    public Text itensText;
+    public Text posicaoText;
+    public Text saveMessageText;
+
+    private Player currentPlayer;
+    private string playerId = "1";
+
+    void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+    }
+
+    void Start()
+    {
+        if (saveMessageText != null) saveMessageText.gameObject.SetActive(false);
+        if (pauseMenu != null) pauseMenu.SetActive(false);
+
+        Debug.Log("=== SISTEMA DE SAVE/LOAD INICIADO (WEBAPI LOCAL) ===");
+
+        // Carrega o jogador principal
+        LoadPlayerData();
+    }
+
+    void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            TogglePauseMenu();
+        }
+
+        if (Input.GetKeyDown(KeyCode.T))
+        {
+            TestarAPIManual();
+        }
+    }
+
+    // ========== SISTEMA DE SAVE/LOAD ==========
+
+    public void UpdatePlayerData(int vida, int quantidadeItens, Vector3 position)
+    {
+        if (currentPlayer != null)
+        {
+            currentPlayer.Vida = vida;
+            currentPlayer.QuantidadeItens = quantidadeItens;
+            currentPlayer.PosicaoX = position.x;
+            currentPlayer.PosicaoY = position.y;
+            currentPlayer.PosicaoZ = position.z;
+        }
+    }
+
+    public void SavePlayerData()
+    {
+        if (currentPlayer != null)
+        {
+            APIManager.Instance.UpdatePlayer(currentPlayer.id, currentPlayer, (result) => {
+                if (result != null)
+                {
+                    Debug.Log("💾 Salvamento realizado!");
+                    currentPlayer = result;
+                }
+               
+            });
+        }
+    }
+
+    public void ShowSaveMessage()
+    {
+        StartCoroutine(ShowSaveMessageCoroutine());
+    }
+
+    private System.Collections.IEnumerator ShowSaveMessageCoroutine()
+    {
+        if (saveMessageText != null)
+        {
+            saveMessageText.gameObject.SetActive(true);
+            yield return new WaitForSeconds(2f);
+            saveMessageText.gameObject.SetActive(false);
+        }
+    }
+
+    private void LoadPlayerData()
+    {
+        Debug.Log("🔄 Carregando player...");
+
+        APIManager.Instance.GetPlayer(playerId, (player) => {
+            if (player != null)
+            {
+                currentPlayer = player;
+                Debug.Log($"✅ Player carregado: Vida: {currentPlayer.Vida}, Itens: {currentPlayer.QuantidadeItens}");
+            }
+            else
+            {
+                Debug.Log("🎮 Criando novo player...");
+                CreateNewPlayer();
+            }
+        });
+    }
+
+    private void CreateNewPlayer()
+    {
+        currentPlayer = new Player
+        {
+            Vida = 100,
+            QuantidadeItens = 0,
+            PosicaoX = 0,
+            PosicaoY = 0,
+            PosicaoZ = 0
+        };
+
+        APIManager.Instance.AddPlayer(currentPlayer, (newPlayer) => {
+            if (newPlayer != null)
+            {
+                currentPlayer = newPlayer;
+                playerId = currentPlayer.id;
+                Debug.Log($"✅ Novo player criado com ID: {currentPlayer.id}");
+            }
+           
+        });
+    }
+
+    // ========== MENU DE PAUSA ==========
+
+    public void TogglePauseMenu()
+    {
+        if (pauseMenu == null) return;
+
+        bool isPaused = !pauseMenu.activeSelf;
+        pauseMenu.SetActive(isPaused);
+        Time.timeScale = isPaused ? 0f : 1f;
+
+        if (isPaused)
+        {
+            UpdatePauseMenuUI();
+        }
+    }
+
+    private void UpdatePauseMenuUI()
+    {
+        if (currentPlayer != null)
+        {
+            if (vidaText != null) vidaText.text = "Vida: " + currentPlayer.Vida;
+            if (posicaoText != null) posicaoText.text = $"Posição: ({currentPlayer.PosicaoX:F1}, {currentPlayer.PosicaoY:F1}, {currentPlayer.PosicaoZ:F1})";
+            if (itensText != null) itensText.text = "Itens: " + currentPlayer.QuantidadeItens;
+        }
+    }
+
+    public void RecarregarJogo()
+    {
+        LoadPlayerData();
+        TogglePauseMenu();
+    }
+
+    // ========== TESTES ==========
+
+    private void TestarAPIManual()
+    {
+        Debug.Log("=== TESTANDO API ===");
+
+        APIManager.Instance.GetAllPlayers((players) => {
+            if (players != null)
+            {
+                Debug.Log($"📊 Total de players: {players.Length}");
+            }
+        });
+    }
+
+    // ========== GETTERS ==========
+
+    public Player GetCurrentPlayer()
+    {
+        return currentPlayer;
+    }
+}
