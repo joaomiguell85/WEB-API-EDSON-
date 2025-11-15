@@ -1,0 +1,214 @@
+using UnityEngine;
+using System.Collections;
+using UnityEngine.Networking;
+using System.Text;
+using System;
+
+public class APIManager : MonoBehaviour
+{
+    private static APIManager _instance;
+    public static APIManager Instance => _instance;
+
+    private const string BASE_URL = "http://localhost:5158/api/player";
+
+    void Awake()
+    {
+        if (_instance == null)
+        {
+            _instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
+
+    // GET - Buscar todos os players
+    public void GetAllPlayers(System.Action<Player[]> callback)
+    {
+        StartCoroutine(GetAllPlayersCoroutine(callback));
+    }
+
+    // GET - Buscar player por ID
+    public void GetPlayer(string id, System.Action<Player> callback)
+    {
+        StartCoroutine(GetPlayerCoroutine(id, callback));
+    }
+
+    // POST - Adicionar novo player
+    public void AddPlayer(Player player, System.Action<Player> callback)
+    {
+        StartCoroutine(AddPlayerCoroutine(player, callback));
+    }
+
+    // PUT - Atualizar player
+    public void UpdatePlayer(string id, Player player, System.Action<Player> callback)
+    {
+        StartCoroutine(UpdatePlayerCoroutine(id, player, callback));
+    }
+
+    // DELETE - Remover player
+    public void DeletePlayer(string id, System.Action<bool> callback)
+    {
+        StartCoroutine(DeletePlayerCoroutine(id, callback));
+    }
+
+    // ========== CORROTINAS ==========
+
+    private IEnumerator GetAllPlayersCoroutine(System.Action<Player[]> callback)
+    {
+        string url = BASE_URL;
+        Debug.Log($" GET All Players: {url}");
+
+        using (UnityWebRequest webRequest = UnityWebRequest.Get(url))
+        {
+            yield return webRequest.SendWebRequest();
+
+            if (webRequest.result == UnityWebRequest.Result.Success)
+            {
+                string json = webRequest.downloadHandler.text;
+                Debug.Log($" Players recebidos: {json}");
+
+                // Tenta desserializar como array primeiro
+                try
+                {
+                    Player[] players = JsonHelper.FromJson<Player>(json);
+                    callback(players);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"Erro ao desserializar players: {e.Message}");
+                    callback(null);
+                }
+            }
+            
+        }
+    }
+
+    private IEnumerator GetPlayerCoroutine(string id, System.Action<Player> callback)
+    {
+        string url = $"{BASE_URL}/{id}";
+        Debug.Log($" GET Player: {url}");
+
+        using (UnityWebRequest webRequest = UnityWebRequest.Get(url))
+        {
+            yield return webRequest.SendWebRequest();
+
+            if (webRequest.result == UnityWebRequest.Result.Success)
+            {
+                string json = webRequest.downloadHandler.text;
+                Debug.Log($"Player recebido: {json}");
+
+                Player player = JsonUtility.FromJson<Player>(json);
+                callback(player);
+            }
+            else
+            {
+                Debug.LogError($"❌ Erro GET Player: {webRequest.error}");
+                callback(null);
+            }
+        }
+    }
+
+    private IEnumerator AddPlayerCoroutine(Player player, System.Action<Player> callback)
+    {
+        string url = BASE_URL;
+        Debug.Log($" POST Add Player: {url}");
+
+        string json = JsonUtility.ToJson(player);
+        Debug.Log($" JSON enviado: {json}");
+
+        using (UnityWebRequest webRequest = new UnityWebRequest(url, "POST"))
+        {
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
+            webRequest.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            webRequest.downloadHandler = new DownloadHandlerBuffer();
+            webRequest.SetRequestHeader("Content-Type", "application/json");
+
+            yield return webRequest.SendWebRequest();
+
+            if (webRequest.result == UnityWebRequest.Result.Success)
+            {
+                string responseJson = webRequest.downloadHandler.text;
+                Debug.Log($" Player criado: {responseJson}");
+
+                Player newPlayer = JsonUtility.FromJson<Player>(responseJson);
+                callback(newPlayer);
+            }
+            
+        }
+    }
+
+    private IEnumerator UpdatePlayerCoroutine(string id, Player player, System.Action<Player> callback)
+    {
+        string url = $"{BASE_URL}/{id}";
+        Debug.Log($" PUT Update Player: {url}");
+
+        string json = JsonUtility.ToJson(player);
+        Debug.Log($" JSON enviado: {json}");
+
+        using (UnityWebRequest webRequest = new UnityWebRequest(url, "PUT"))
+        {
+            byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
+            webRequest.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            webRequest.downloadHandler = new DownloadHandlerBuffer();
+            webRequest.SetRequestHeader("Content-Type", "application/json");
+
+            yield return webRequest.SendWebRequest();
+
+            if (webRequest.result == UnityWebRequest.Result.Success)
+            {
+                string responseJson = webRequest.downloadHandler.text;
+                Debug.Log($" Player atualizado: {responseJson}");
+
+                Player updatedPlayer = JsonUtility.FromJson<Player>(responseJson);
+                callback(updatedPlayer);
+            }
+            else
+            {
+                Debug.LogError($"❌ Erro PUT: {webRequest.error}");
+                callback(null);
+            }
+        }
+    }
+
+    private IEnumerator DeletePlayerCoroutine(string id, System.Action<bool> callback)
+    {
+        string url = $"{BASE_URL}/{id}";
+        Debug.Log($" DELETE Player: {url}");
+
+        using (UnityWebRequest webRequest = UnityWebRequest.Delete(url))
+        {
+            yield return webRequest.SendWebRequest();
+
+            if (webRequest.result == UnityWebRequest.Result.Success)
+            {
+                Debug.Log($" Player {id} deletado com sucesso");
+                callback(true);
+            }
+            else
+            {
+                Debug.LogError($" Erro DELETE: {webRequest.error}");
+                callback(false);
+            }
+        }
+    }
+}
+
+// Helper para desserializar arrays JSON
+public static class JsonHelper
+{
+    public static T[] FromJson<T>(string json)
+    {
+        string newJson = "{\"items\":" + json + "}";
+        Wrapper<T> wrapper = JsonUtility.FromJson<Wrapper<T>>(newJson);
+        return wrapper.items;
+    }
+
+    [System.Serializable]
+    private class Wrapper<T>
+    {
+        public T[] items;
+    }
+}
